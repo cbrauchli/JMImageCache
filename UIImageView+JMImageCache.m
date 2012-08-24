@@ -46,7 +46,7 @@ static char kJMImageURLObjectKey;
 - (void) setImageWithURL:(NSURL *)url key:(NSString*)key placeholder:(UIImage *)placeholderImage {
     self.jm_imageURL = url;
 
-	UIImage *i;
+    UIImage *i;
 
     if (key) {
         i = [[JMImageCache sharedCache] cachedImageForKey:key];
@@ -54,10 +54,10 @@ static char kJMImageURLObjectKey;
         i = [[JMImageCache sharedCache] cachedImageForURL:url];
     }
 
-	if(i) {
+    if(i) {
         self.image = i;
         self.jm_imageURL = nil;
-	} else {
+    } else {
         self.image = placeholderImage;
 
         __block UIImageView *safeSelf = self;
