@@ -87,9 +87,7 @@ JMImageCache *_sharedCache = nil;
             });
         } else {
             // Have to download the image!
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self _downloadAndWriteImageForURL:url key:key completionBlock:completion];
-            });
+            [self _downloadAndWriteImageForURL:url key:key completionBlock:completion];
         }
     }];
     [self.diskOperationQueue addOperationAtFrontOfQueue:diskReadOperation];
@@ -104,7 +102,6 @@ JMImageCache *_sharedCache = nil;
     
     NSInvocationOperation *downloadOperation = [[NSInvocationOperation alloc] initWithTarget:[NSData class] selector:@selector(dataWithContentsOfURL:) object:url];
     [downloadOperation setCompletionBlock:^{
-        DLog(@"downaloddd!");
         NSData *data = downloadOperation.result;
         UIImage *i = [[UIImage alloc] initWithData:data];
         
