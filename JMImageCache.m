@@ -8,13 +8,14 @@
 
 #import "JMImageCache.h"
 
-static NSString *_JMImageCacheDirectory;
+static NSString* _JMImageCacheDirectory;
+static dispatch_once_t onceToken;
 
-static inline NSString *JMImageCacheDirectory() {
-	if(!_JMImageCacheDirectory) {
-		_JMImageCacheDirectory = [[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/JMCache"] copy];
-	}
-
+inline static NSString* JMImageCacheDirectory() {
+  dispatch_once(&onceToken, ^{
+    _JMImageCacheDirectory = [[[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) lastObject] stringByAppendingPathComponent:@"JMCache"] copy];
+	});
+  
 	return _JMImageCacheDirectory;
 }
 inline static NSString *keyForURL(NSURL *url) {
