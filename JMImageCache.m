@@ -7,6 +7,7 @@
 //
 
 #import "JMImageCache.h"
+#import "NSOperationQueue+LIFO.h"
 
 static NSString *_JMImageCacheDirectory;
 static dispatch_once_t onceToken;
@@ -31,7 +32,9 @@ JMImageCache *_sharedCache = nil;
 @interface JMImageCache ()
 
 @property (strong, nonatomic) NSOperationQueue *diskOperationQueue;
+@property (strong, nonatomic) NSOperationQueue *downloadOperationQueue;
 
+- (void) _asyncGetImageFromDiskOrRemoteSourceForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion;
 - (void) _downloadAndWriteImageForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion;
 
 @end
@@ -39,6 +42,7 @@ JMImageCache *_sharedCache = nil;
 @implementation JMImageCache
 
 @synthesize diskOperationQueue = _diskOperationQueue;
+@synthesize downloadOperationQueue = _downloadOperationQueue;
 
 + (JMImageCache *) sharedCache {
     if(!_sharedCache) {
@@ -53,6 +57,9 @@ JMImageCache *_sharedCache = nil;
     if(!self) return nil;
 
     self.diskOperationQueue = [[NSOperationQueue alloc] init];
+    self.diskOperationQueue.maxConcurrentOperationCount = 1;
+    self.downloadOperationQueue = [[NSOperationQueue alloc] init];
+    self.downloadOperationQueue.maxConcurrentOperationCount = 10;
 
     [[NSFileManager defaultManager] createDirectoryAtPath:JMImageCacheDirectory()
                               withIntermediateDirectories:YES
@@ -61,32 +68,63 @@ JMImageCache *_sharedCache = nil;
     return self;
 }
 
+- (void) _asyncGetImageFromDiskOrRemoteSourceForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion {
+    if (!key && !url) return;
+    
+    if (!key) {
+        key = keyForURL(url);
+    }
+    
+    NSInvocationOperation *diskReadOperation = [[NSInvocationOperation alloc] initWithTarget:self selector:@selector(imageFromDiskForKey:) object:key];
+    [diskReadOperation setCompletionBlock:^{
+        UIImage *i = diskReadOperation.result;
+        
+        if (i) {
+            [self setImage:i forKey:key];
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if(completion) completion(i);
+            });
+        } else {
+            // Have to download the image!
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self _downloadAndWriteImageForURL:url key:key completionBlock:completion];
+            });
+        }
+    }];
+    [self.diskOperationQueue addOperationAtFrontOfQueue:diskReadOperation];
+}
+
 - (void) _downloadAndWriteImageForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion {
     if (!key && !url) return;
 
     if (!key) {
         key = keyForURL(url);
     }
-
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSData *data = [NSData dataWithContentsOfURL:url];
+    
+    NSInvocationOperation *downloadOperation = [[NSInvocationOperation alloc] initWithTarget:[NSData class] selector:@selector(dataWithContentsOfURL:) object:url];
+    [downloadOperation setCompletionBlock:^{
+        DLog(@"downaloddd!");
+        NSData *data = downloadOperation.result;
         UIImage *i = [[UIImage alloc] initWithData:data];
-
+        
+        [self setImage:i forKey:key];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if(completion) completion(i);
+        });
+        
         NSString *cachePath = cachePathForKey(key);
         NSInvocation *writeInvocation = [NSInvocation invocationWithMethodSignature:[self methodSignatureForSelector:@selector(writeData:toPath:)]];
-
+        
         [writeInvocation setTarget:self];
         [writeInvocation setSelector:@selector(writeData:toPath:)];
         [writeInvocation setArgument:&data atIndex:2];
         [writeInvocation setArgument:&cachePath atIndex:3];
-
+        
         [self performDiskWriteOperation:writeInvocation];
-        [self setImage:i forKey:key];
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if(completion) completion(i);
-        });
-    });
+    }];
+    [self.downloadOperationQueue addOperationAtFrontOfQueue:downloadOperation];
 }
 
 - (void) removeAllObjects {
@@ -132,17 +170,22 @@ JMImageCache *_sharedCache = nil;
 
 - (void) imageForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion {
 
-    UIImage *i = [self cachedImageForKey:key];
+    UIImage *i = [super objectForKey:key];
 
     if(i) {
         if(completion) completion(i);
     } else {
-        [self _downloadAndWriteImageForURL:url key:key completionBlock:completion];
+        [self _asyncGetImageFromDiskOrRemoteSourceForURL:url key:key completionBlock:completion];
     }
 }
 
 - (void) imageForURL:(NSURL *)url completionBlock:(void (^)(UIImage *image))completion {
     [self imageForURL:url key:keyForURL(url) completionBlock:completion];
+}
+
+- (id)objectForURL:(NSURL *)url {
+    NSString *key = keyForURL(url);
+    return [super objectForKey:key];
 }
 
 - (UIImage *) cachedImageForKey:(NSString *)key {

@@ -25,6 +25,7 @@
 - (void) imageForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion;
 - (void) imageForURL:(NSURL *)url completionBlock:(void (^)(UIImage *image))completion;
 
+- (id) objectForURL:(NSURL *)url;
 - (UIImage *) cachedImageForKey:(NSString *)key;
 - (UIImage *) cachedImageForURL:(NSURL *)url;
 

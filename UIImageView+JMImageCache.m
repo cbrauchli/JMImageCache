@@ -49,9 +49,9 @@ static char kJMImageURLObjectKey;
     UIImage *i;
 
     if (key) {
-        i = [[JMImageCache sharedCache] cachedImageForKey:key];
+        i = [[JMImageCache sharedCache] objectForKey:key];
     } else {
-        i = [[JMImageCache sharedCache] cachedImageForURL:url];
+        i = [[JMImageCache sharedCache] objectForURL:url];
     }
 
     if(i) {
