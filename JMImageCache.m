@@ -7,7 +7,7 @@
 //
 
 #import "JMImageCache.h"
-#import "NSOperationQueue+LIFO.h"
+#import "CBOperationStack.h"
 
 static NSString *_JMImageCacheDirectory;
 static dispatch_once_t onceToken;
@@ -16,7 +16,7 @@ static inline NSString *JMImageCacheDirectory() {
     dispatch_once(&onceToken, ^{
         _JMImageCacheDirectory = [[[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) lastObject] stringByAppendingPathComponent:@"JMCache"] copy];
     });
-  
+    
     return _JMImageCacheDirectory;
 }
 static inline NSString *keyForURL(NSURL *url) {
@@ -31,8 +31,8 @@ JMImageCache *_sharedCache = nil;
 
 @interface JMImageCache ()
 
-@property (strong, nonatomic) NSOperationQueue *diskOperationQueue;
-@property (strong, nonatomic) NSOperationQueue *downloadOperationQueue;
+@property (strong, nonatomic) CBOperationStack *diskOperationQueue;
+@property (strong, nonatomic) CBOperationStack *downloadOperationQueue;
 
 - (void) _asyncGetImageFromDiskOrRemoteSourceForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion;
 - (void) _downloadAndWriteImageForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion;
@@ -48,19 +48,19 @@ JMImageCache *_sharedCache = nil;
     if(!_sharedCache) {
         _sharedCache = [[JMImageCache alloc] init];
     }
-
+    
     return _sharedCache;
 }
 
 - (id) init {
     self = [super init];
     if(!self) return nil;
-
-    self.diskOperationQueue = [[NSOperationQueue alloc] init];
-    self.diskOperationQueue.maxConcurrentOperationCount = 1;
-    self.downloadOperationQueue = [[NSOperationQueue alloc] init];
-    self.downloadOperationQueue.maxConcurrentOperationCount = 10;
-
+    
+    self.diskOperationQueue = [[CBOperationStack alloc] init];
+    self.diskOperationQueue.maxConcurrentOperationCount = 3;
+    self.downloadOperationQueue = [[CBOperationStack alloc] init];
+    self.downloadOperationQueue.maxConcurrentOperationCount = 3;
+    
     [[NSFileManager defaultManager] createDirectoryAtPath:JMImageCacheDirectory()
                               withIntermediateDirectories:YES
                                                attributes:nil
@@ -90,12 +90,12 @@ JMImageCache *_sharedCache = nil;
             [self _downloadAndWriteImageForURL:url key:key completionBlock:completion];
         }
     }];
-    [self.diskOperationQueue addOperationAtFrontOfQueue:diskReadOperation];
+    [self.diskOperationQueue addOperation:diskReadOperation];
 }
 
 - (void) _downloadAndWriteImageForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion {
     if (!key && !url) return;
-
+    
     if (!key) {
         key = keyForURL(url);
     }
@@ -121,21 +121,21 @@ JMImageCache *_sharedCache = nil;
         
         [self performDiskWriteOperation:writeInvocation];
     }];
-    [self.downloadOperationQueue addOperationAtFrontOfQueue:downloadOperation];
+    [self.downloadOperationQueue addOperation:downloadOperation];
 }
 
 - (void) removeAllObjects {
     [super removeAllObjects];
-
+    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSFileManager *fileMgr = [NSFileManager defaultManager];
         NSError *error = nil;
         NSArray *directoryContents = [fileMgr contentsOfDirectoryAtPath:JMImageCacheDirectory() error:&error];
-
+        
         if (error == nil) {
             for (NSString *path in directoryContents) {
                 NSString *fullPath = [JMImageCacheDirectory() stringByAppendingPathComponent:path];
-
+                
                 BOOL removeSuccess = [fileMgr removeItemAtPath:fullPath error:&error];
                 if (!removeSuccess) {
                     //Error Occured
@@ -148,13 +148,13 @@ JMImageCache *_sharedCache = nil;
 }
 - (void) removeObjectForKey:(id)key {
     [super removeObjectForKey:key];
-
+    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSFileManager *fileMgr = [NSFileManager defaultManager];
         NSString *cachePath = cachePathForKey(key);
-
+        
         NSError *error = nil;
-
+        
         BOOL removeSuccess = [fileMgr removeItemAtPath:cachePath error:&error];
         if (!removeSuccess) {
             //Error Occured
@@ -166,9 +166,9 @@ JMImageCache *_sharedCache = nil;
 #pragma mark Getter Methods
 
 - (void) imageForURL:(NSURL *)url key:(NSString *)key completionBlock:(void (^)(UIImage *image))completion {
-
+    
     UIImage *i = [super objectForKey:key];
-
+    
     if(i) {
         if(completion) completion(i);
     } else {
@@ -187,18 +187,18 @@ JMImageCache *_sharedCache = nil;
 
 - (UIImage *) cachedImageForKey:(NSString *)key {
     if(!key) return nil;
-
+    
     id returner = [super objectForKey:key];
-
+    
     if(returner) {
         return returner;
     } else {
         UIImage *i = [self imageFromDiskForKey:key];
         if(i) [self setImage:i forKey:key];
-
+        
         return i;
     }
-
+    
     return nil;
 }
 
@@ -209,9 +209,9 @@ JMImageCache *_sharedCache = nil;
 
 - (UIImage *) imageForURL:(NSURL *)url key:(NSString*)key delegate:(id<JMImageCacheDelegate>)d {
     if(!url) return nil;
-
+    
     UIImage *i = [self cachedImageForURL:url];
-
+    
     if(i) {
         return i;
     } else {
@@ -226,7 +226,7 @@ JMImageCache *_sharedCache = nil;
             }
         }];
     }
-
+    
     return nil;
 }
 
@@ -270,7 +270,7 @@ JMImageCache *_sharedCache = nil;
 - (void) performDiskWriteOperation:(NSInvocation *)invoction {
     NSInvocationOperation *operation = [[NSInvocationOperation alloc] initWithInvocation:invoction];
     
-    [self.diskOperationQueue addOperation:operation];
+    [self.diskOperationQueue addOperationAtBottomOfStack:operation];
 }
 
 @end
