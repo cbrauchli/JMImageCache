@@ -1,3 +1,7 @@
+This is a fork of `JMImageCache` with a few key differences:
+ * It uses `NSOperations` for remote downloads, which prevents the number of threads from exploding when you are downloading many images. 
+ * It makes reading from disk asynchronous (not just writing), which improves scrolling performance in many instances.
+ * It uses [`CBOperationStack`](https://github.com/cbrauchli/CBOperationStack) to execute the download and disk read `NSOperations`, which means they get executed in a Last In, First Out (LIFO) order. For most cases, this more desirable than FIFO order, since the most recently added image to the download queue is generally the most likely to still be on screen.
 # JMImageCache
 
 ## Introduction
@@ -73,24 +77,12 @@ This repository is actually a demo project itself. Just a simple `UITableViewCon
 
 ## Adding To Your Project
 
-### With CocoaPods
-
-If you are using [CocoaPods](http://cocoapods.org) then just add this line to your `Podfile`:
-
-``` ruby
-pod 'JMImageCache'
-```
-
-Now run `pod install` to install the dependency.
-
-### Without CocoaPods
-
 [Download](https://github.com/jakemarsh/JMImageCache/zipball/master) the source files or add it as a [git submodule](http://schacon.github.com/git/user-manual.html#submodules). Here's how to add it as a submodule:
 
     $ cd YourProject
     $ git submodule add https://github.com/jakemarsh/JMImageCache.git Vendor/JMImageCache
 
-Add the 4 Objective-C files inside the `JMImageCache` folder to your project. `#import "JMImageCache.h" where you need it.`
+Add the 6 Objective-C files inside the `JMImageCache` folder to your project. `#import "JMImageCache.h" where you need it.`
 
 ## ARC (Automatic Reference Counting)
 
