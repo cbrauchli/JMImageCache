@@ -41,6 +41,5 @@
 - (void) removeImageForURL:(NSString *)url;
 
 - (void) writeData:(NSData *)data toPath:(NSString *)path;
-- (void) performDiskWriteOperation:(NSInvocation *)invoction;
 
 @end
