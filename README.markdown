@@ -1,7 +1,8 @@
 This is a fork of `JMImageCache` with a few key differences:
  * It uses `NSOperations` for remote downloads, which prevents the number of threads from exploding when you are downloading many images. 
- * It makes reading from disk asynchronous (not just writing), which improves scrolling performance in many instances.
+ * It makes reading from disk asynchronous (not just writing), which improves scrolling performance when there are many images.
  * It uses [`CBOperationStack`](https://github.com/cbrauchli/CBOperationStack) to execute the download and disk read `NSOperations`, which means they get executed in a Last In, First Out (LIFO) order. For most cases, this more desirable than FIFO order, since the most recently added image to the download queue is generally the most likely to still be on screen.
+
 # JMImageCache
 
 ## Introduction
