@@ -113,7 +113,7 @@ inline static void ClearQueues(NSArray *queues)
 {
 	[self stop];
 	
-	ClearQueues(queues);
+//	ClearQueues(queues);
 }
 
 inline static NSUInteger getPriority(NSOperation *op)
@@ -317,6 +317,9 @@ inline static NSUInteger getPriority(NSOperation *op)
       if (op) {
         [op start];
         didRun = YES;
+      }
+      else {
+        didRun = NO;
       }
     }
   }
