@@ -27,8 +27,6 @@ static inline NSString *cachePathForKey(NSString *key) {
     return [JMImageCacheDirectory() stringByAppendingPathComponent:fileName];
 }
 
-JMImageCache *_sharedCache = nil;
-
 @interface JMImageCache ()
 
 @property (strong, nonatomic) CBOperationStack *diskOperationQueue;
@@ -45,11 +43,14 @@ JMImageCache *_sharedCache = nil;
 @synthesize downloadOperationQueue = _downloadOperationQueue;
 
 + (JMImageCache *) sharedCache {
-    if(!_sharedCache) {
-        _sharedCache = [[JMImageCache alloc] init];
-    }
+    static JMImageCache *shared;
+    static dispatch_once_t onceToken;
     
-    return _sharedCache;
+    dispatch_once(&onceToken, ^{
+        shared = [[JMImageCache alloc] init];
+    });
+    
+    return shared;
 }
 
 - (id) init {
@@ -76,20 +77,18 @@ JMImageCache *_sharedCache = nil;
     }
     
     NSBlockOperation *diskReadOperation = [NSBlockOperation blockOperationWithBlock:^{
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-            UIImage *i = [self imageFromDiskForKey:key];
-            
-            if (i) {
-                [self setImage:i forKey:key];
-                
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if(completion) completion(i);
-                });
-            } else {
-                // Have to download the image!
-                [self _downloadAndWriteImageForURL:url key:key completionBlock:completion];
-            }
-        });
+          UIImage *i = [self imageFromDiskForKey:key];
+          
+          if (i) {
+              [self setImage:i forKey:key];
+              
+              dispatch_async(dispatch_get_main_queue(), ^{
+                  if(completion) completion(i);
+              });
+          } else {
+              // Have to download the image!
+              [self _downloadAndWriteImageForURL:url key:key completionBlock:completion];
+          }
     }];
     
     [self.diskOperationQueue addOperation:diskReadOperation];
@@ -103,22 +102,27 @@ JMImageCache *_sharedCache = nil;
     }
     
     NSBlockOperation *downloadOperation = [NSBlockOperation blockOperationWithBlock:^{
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-            NSData *data = [NSData dataWithContentsOfURL:url];
-            UIImage *i = [[UIImage alloc] initWithData:data];
-            
-            [self setImage:i forKey:key];
-            
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if(completion) completion(i);
-            });
-            
-            NSBlockOperation *diskWriteOperation = [NSBlockOperation blockOperationWithBlock:^{
-                NSString *cachePath = cachePathForKey(key);
-                [self writeData:data toPath:cachePath];
-            }];
-            [self.diskOperationQueue addOperationAtBottomOfStack:diskWriteOperation];
-        });
+          NSError *error = nil;
+          NSData *data = [NSData dataWithContentsOfURL:url options:NSDataReadingUncached error:&error];
+          UIImage *i = [[UIImage alloc] initWithData:data];
+        
+          if (error) {
+              NSLog(@"Error downloading image from %@: %@", [url absoluteString], [error localizedDescription]);
+          }
+          else {
+              [self setImage:i forKey:key];
+              
+              dispatch_async(dispatch_get_main_queue(), ^{
+                  if(completion) completion(i);
+              });
+              
+              NSBlockOperation *diskWriteOperation = [NSBlockOperation blockOperationWithBlock:^{
+                  NSString *cachePath = cachePathForKey(key);
+                  [self writeData:data toPath:cachePath];
+              }];
+              [self.diskOperationQueue addOperationAtBottomOfStack:diskWriteOperation];
+//                [self.diskOperationQueue addOperation:diskWriteOperation];
+          }
     }];
     
     [self.downloadOperationQueue addOperation:downloadOperation];
